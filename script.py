@@ -1,10 +1,13 @@
 import requests
 from bs4 import BeautifulSoup
-import pprint as pp
+import time
 import os
 from groq import Groq
+import pprint
 from dotenv import load_dotenv
+import tweepy
 
+# SECTION 1
 # URL of the main page to scrape
 main_url = 'https://www.whitehouse.gov/briefing-room/'
 
@@ -14,7 +17,6 @@ headers = {
 }
 
 # Function to fetch the most recent article link
-
 def fetch_most_recent_article(url):
     try:
         # Request the main page
@@ -70,60 +72,35 @@ def fetch_article_content(article_url):
         print(f"Failed to fetch article page: {e}")
         return "Error retrieving content."
 
+# saving article and URL
 recent_article = fetch_most_recent_article(main_url)
-print(recent_article)
+url = recent_article['link']
 
-# URL of the specific article page
-article_url = recent_article['link']
+# Send a GET request to the webpage
+response = requests.get(url)
+response.raise_for_status()  # Check for request errors
 
-# Headers to mimic a real browser request
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36'
-}
+# Parse the HTML with BeautifulSoup
+soup = BeautifulSoup(response.text, 'html.parser')
 
-# Function to fetch and parse the article content
-def fetch_article_body_content(url):
-    try:
-        # Request the article page
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()  # Check for request errors
+# Find the section containing the main content
+body_content = soup.find('section', class_='body-content')
 
-        # Parse the article page HTML
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Locate the <article> tag with the specific class
-        article = soup.find('article', class_='post-108981 post type-post status-publish hentry category-speeches-remarks')
-
-        # Find the <section class="body-content"> within the <article> tag
-        body_content_section = article.find('section', class_='body-content') if article else None
-
-        if body_content_section:
-            # Extract and combine all text within the <section> into a single string
-            content = ' '.join([p.get_text(strip=True) for p in body_content_section.find_all('p')])
-            return content
-        else:
-            return "Content not found in the specified section."
-
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to fetch article page: {e}")
-        return "Error retrieving content."
-
-# Fetch the content of the article body and print
-article_content = fetch_article_body_content(article_url)
-print(article_content)
+# Combine all text within the section into one string
+article_content = body_content.get_text(separator=" ", strip=True)
 
 # Initialize the client with the API key
 load_dotenv("keys.env")
-api_key = os.getenv("GROQ_API_KEY")
+api_key = os.getenv('GROQ_API_KEY')
 client = Groq(api_key=api_key)
 
 # Define the chat completion request using client.chat.completions.create()
 chat_completion = client.chat.completions.create(
-    model="llama3-8b-8192",
+    model="gemma2-9b-it",
     messages=[
         {
             "role": "system",
-            "content": "You are a non-partisan and non-biased bot attempting to give information to the general population. You are to limit your response to 560 characters."
+            "content": "Give me a short summary of this post. I want you to be non-biased"
         },
         {
             "role": "user",
@@ -135,9 +112,54 @@ chat_completion = client.chat.completions.create(
 # Print the response content
 response = chat_completion.choices[0].message.content
 
+# Creating variables of link and title
 title = recent_article['title']
 link = recent_article['link']
 
-pp.pprint(recent_article['title'])
-pp.pprint(recent_article['link'])
-pp.pprint(response)
+# Function to split text into 280-character parts
+def split_into_tweets(text, max_length=280):
+    words = text.split()
+    tweets = []
+    tweet = ""
+    
+    for word in words:
+        if len(tweet) + len(word) + 1 > max_length:
+            tweets.append(tweet)
+            tweet = word
+        else:
+            tweet += " " + word if tweet else word
+    
+    if tweet:
+        tweets.append(tweet)
+    
+    return tweets
+
+# Creating Tweet
+tweet_content = split_into_tweets(response)
+
+# Twitter API credentials from .env file
+API_KEY = os.getenv("API_KEY")
+API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+ACCESS_TOKEN = os.getenv("CLIENT_ID")
+ACCESS_TOKEN_SECRET = os.getenv("CLIENT_SECRET")
+
+tweepy_client = tweepy.Client(
+    consumer_key=API_KEY,
+    consumer_secret=API_SECRET_KEY,
+    access_token=ACCESS_TOKEN,
+    access_token_secret=ACCESS_TOKEN_SECRET
+)
+
+# Only post if there is a new article
+last_article_tweeted = ""
+how_many = len(tweet_content)
+
+if last_article_tweeted != title:
+    try:
+        for i in range(0,how_many):
+            tweepy_client.create_tweet(text=tweet_content[i])
+            print("Tweeted successfully!")
+        last_article_tweeted = title
+    except tweepy.TweepyException as e:
+        print(f"Error: {e}")
+        print(f"Error type: {type(e)}") 
