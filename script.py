@@ -1,13 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
-import time
 import os
 from groq import Groq
-import pprint
 from dotenv import load_dotenv
 import tweepy
 
-# SECTION 1
 # URL of the main page to scrape
 main_url = 'https://www.whitehouse.gov/briefing-room/'
 
@@ -100,7 +97,7 @@ chat_completion = client.chat.completions.create(
     messages=[
         {
             "role": "system",
-            "content": "Give me a short summary of this post. I want you to be non-biased"
+            "content": "Give me a very short summary of this post. I want you to be non-biased"
         },
         {
             "role": "user",
@@ -136,6 +133,33 @@ def split_into_tweets(text, max_length=280):
 
 # Creating Tweet
 tweet_content = split_into_tweets(response)
+tweets = tweet_content
+tweets.insert(0, title)
+# tweets.append("#news #whitehouse #biden #trump #update")
+
+# function to write to our text file
+def write_to_file(filename, text):
+    try:
+        with open(filename, 'w') as f:
+            f.write(text)
+        print(f"Successfully wrote to {filename}")
+    except:
+        print("Failed")
+
+# read our text file:
+def read_file_as_string(file_path):
+    with open(file_path, "r") as file:
+        return file.read()
+    
+last_article_tweeted = read_file_as_string("last_article_tweeted.txt")
+
+# thread
+def create_thread(tweets):
+    first_tweet = tweepy_client.create_tweet(text=tweets[0])
+    reply_to_id = first_tweet
+
+    for tweet in tweets[1:]:
+        reply_to_id = tweepy_client.create_tweet(text=tweet, in_reply_to_tweet_id=first_tweet.data['id'])
 
 # Twitter API credentials from .env file
 API_KEY = os.getenv("API_KEY")
@@ -143,23 +167,20 @@ API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 ACCESS_TOKEN = os.getenv("CLIENT_ID")
 ACCESS_TOKEN_SECRET = os.getenv("CLIENT_SECRET")
 
-tweepy_client = tweepy.Client(
-    consumer_key=API_KEY,
-    consumer_secret=API_SECRET_KEY,
-    access_token=ACCESS_TOKEN,
-    access_token_secret=ACCESS_TOKEN_SECRET
-)
-
-# Only post if there is a new article
-last_article_tweeted = ""
-how_many = len(tweet_content)
-
 if last_article_tweeted != title:
+    tweepy_client = tweepy.Client(
+        consumer_key=API_KEY,
+        consumer_secret=API_SECRET_KEY,
+        access_token=ACCESS_TOKEN,
+        access_token_secret=ACCESS_TOKEN_SECRET
+    )
+    # create the tweet
     try:
-        for i in range(0,how_many):
-            tweepy_client.create_tweet(text=tweet_content[i])
-            print("Tweeted successfully!")
-        last_article_tweeted = title
+        create_thread(tweets=tweets)
+        last_article_tweeted = tweets[0]
+        write_to_file(last_article_tweeted, title)
     except tweepy.TweepyException as e:
         print(f"Error: {e}")
         print(f"Error type: {type(e)}") 
+else:
+    print("No new articles")

@@ -1,9 +1,8 @@
 import time
 import subprocess
 
+python_interpreter = r"venv\Scripts\python"  # For Windowsx
+
 while True:
-    # Run your script
-    subprocess.run(["python", "script.py"])  # Replace with your script's name
-    
-    # Wait for 10 minutes (600 seconds)
+    subprocess.run([python_interpreter, "script.py"])
     time.sleep(600)
