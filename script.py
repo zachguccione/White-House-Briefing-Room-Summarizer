@@ -93,7 +93,7 @@ client = Groq(api_key=api_key)
 
 # Define the chat completion request using client.chat.completions.create()
 chat_completion = client.chat.completions.create(
-    model="gemma2-9b-it",
+    model="llama-3.1-8b-instant",
     messages=[
         {
             "role": "system",
