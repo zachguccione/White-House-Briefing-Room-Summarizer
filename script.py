@@ -97,7 +97,7 @@ chat_completion = client.chat.completions.create(
     messages=[
         {
             "role": "system",
-            "content": "Give me a very short summary of this post. I want you to be non-biased"
+            "content": "LL I WANT IS A SUMMARY, DO NOT TELL ME YOU ARE GIVING ME A SUMMARY. Give me a super concise summary of this post. I want you to be non-biased. keep your character count less than 520 characters"
         },
         {
             "role": "user",
@@ -161,13 +161,14 @@ def create_thread(tweets):
     for tweet in tweets[1:]:
         reply_to_id = tweepy_client.create_tweet(text=tweet, in_reply_to_tweet_id=first_tweet.data['id'])
 
+
 # Twitter API credentials from .env file
 API_KEY = os.getenv("API_KEY")
 API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 ACCESS_TOKEN = os.getenv("CLIENT_ID")
 ACCESS_TOKEN_SECRET = os.getenv("CLIENT_SECRET")
 
-if last_article_tweeted != title:
+if last_article_tweeted != url:
     tweepy_client = tweepy.Client(
         consumer_key=API_KEY,
         consumer_secret=API_SECRET_KEY,
@@ -178,7 +179,7 @@ if last_article_tweeted != title:
     try:
         create_thread(tweets=tweets)
         last_article_tweeted = tweets[0]
-        write_to_file(last_article_tweeted, title)
+        write_to_file("last_article_tweeted.txt", url)
     except tweepy.TweepyException as e:
         print(f"Error: {e}")
         print(f"Error type: {type(e)}") 
