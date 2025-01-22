@@ -6,85 +6,86 @@ from dotenv import load_dotenv
 import tweepy
 
 # URL of the main page to scrape
-main_url = 'https://www.whitehouse.gov/briefing-room/'
+main_url = 'https://www.whitehouse.gov/presidential-actions/'
 
 # Headers to mimic a real browser request
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36'
 }
 
-# Function to fetch the most recent article link
+import requests
+from bs4 import BeautifulSoup
+
 def fetch_most_recent_article(url):
-    try:
-        # Request the main page
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()  # Check for request errors
-
-        # Parse the HTML
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Locate the div with the articles and get the first article
-        article_wrapper = soup.find('div', class_='article-wrapper')
-
-        if article_wrapper:
-            # Get the most recent article (first one in the list)
-            recent_article = article_wrapper.find('article', class_='news-item')
-            if recent_article:
-                # Extract title, link, and date
-                title_tag = recent_article.find('a', class_='news-item__title')
-                title = title_tag.get_text(strip=True) if title_tag else "No title"
-                link = title_tag['href'] if title_tag else None
-                date_tag = recent_article.find('time', class_='posted-on')
-                date = date_tag.get_text(strip=True) if date_tag else "No date"
-
-                # Return the article details
-                return {
-                    'title': title,
-                    'link': link,
-                    'date': date
-                }
+    response = requests.get(url)
+    response.raise_for_status()
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    
+    posts_container = soup.find("ul", class_="wp-block-post-template")
+    if not posts_container:
         return None
-
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to fetch main page: {e}")
+    
+    posts = posts_container.find_all("li", recursive=False)
+    if not posts:
         return None
+    
+    most_recent_post = posts[0]
+    
+    title_tag = most_recent_post.find("h2", class_="wp-block-post-title")
+    if not title_tag:
+        return None
+    
+    link_tag = title_tag.find("a")
+    if not link_tag:
+        return None
+    
+    title_text = link_tag.get_text(strip=True)
+    link_url   = link_tag.get("href")
+    
+    time_tag = most_recent_post.find("time")
+    if time_tag:
+        datetime_value = time_tag.get("datetime")
+        date_text      = time_tag.get_text(strip=True)
+    else:
+        datetime_value = None
+        date_text      = None
+    
+    return {
+        "title": title_text,
+        "link": link_url,
+        "datetime": datetime_value,  
+        "date": date_text            
+    }
 
-# Function to fetch and scrape the content of the article page
-def fetch_article_content(article_url):
-    try:
-        # Request the article page
-        response = requests.get(article_url, headers=headers, timeout=10)
-        response.raise_for_status()
+def fetch_article_content(url):
+    response = requests.get(url)
+    response.raise_for_status()  # Raises HTTPError if the request resulted in an error
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    
+    content_div = soup.find(
+        "div", 
+        class_="entry-content wp-block-post-content has-global-padding is-layout-constrained wp-block-post-content-is-layout-constrained"
+    )
+    
+    if content_div:
+        article_text = content_div.get_text(separator="\n", strip=True)
+        return article_text
+    
+    return None
 
-        # Parse the article page
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Extract content; this might need adjustment based on the actual structure
-        content_div = soup.find('div', class_='article-body')
-        content = content_div.get_text(separator='\n').strip() if content_div else "Content not found."
-
-        return content
-
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to fetch article page: {e}")
-        return "Error retrieving content."
-
-# saving article and URL
 recent_article = fetch_most_recent_article(main_url)
 url = recent_article['link']
 
-# Send a GET request to the webpage
-response = requests.get(url)
-response.raise_for_status()  # Check for request errors
+article_content = fetch_article_content(url)
 
-# Parse the HTML with BeautifulSoup
+response = requests.get(url)
+response.raise_for_status()
+
 soup = BeautifulSoup(response.text, 'html.parser')
 
-# Find the section containing the main content
 body_content = soup.find('section', class_='body-content')
-
-# Combine all text within the section into one string
-article_content = body_content.get_text(separator=" ", strip=True)
 
 # Initialize the client with the API key
 load_dotenv("keys.env")
@@ -97,7 +98,7 @@ chat_completion = client.chat.completions.create(
     messages=[
         {
             "role": "system",
-            "content": "LL I WANT IS A SUMMARY, DO NOT TELL ME YOU ARE GIVING ME A SUMMARY. Give me a super concise summary of this post. I want you to be non-biased. keep your character count less than 520 characters"
+            "content": "ALL I WANT IS A SUMMARY, DO NOT TELL ME YOU ARE GIVING ME A SUMMARY. Give me a super concise summary of this post. I want you to be non-biased. keep your character count less than 520 characters"
         },
         {
             "role": "user",
