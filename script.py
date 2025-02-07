@@ -4,6 +4,7 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 import tweepy
+from imagepig import ImagePig
 
 # URL of the main page to scrape
 main_url = 'https://www.whitehouse.gov/presidential-actions/'
@@ -154,14 +155,44 @@ def read_file_as_string(file_path):
     
 last_article_tweeted = read_file_as_string("last_article_tweeted.txt")
 
+# Initialize ImagePig
+load_dotenv("keys.env")
+imagepig_api_key = os.getenv('IMAGEPIG_API_KEY')
+imagepig = ImagePig(imagepig_api_key)
+
+# Function to generate image
+def generate_article_image(title):
+    try:
+        result = imagepig.default(title)
+        result.save("article_image.jpeg")
+        return True
+    except Exception as e:
+        print(f"Error generating image: {e}")
+        return False
+
 # thread
 def create_thread(tweets):
-    first_tweet = tweepy_client.create_tweet(text=tweets[0])
+    # Generate image for the first tweet
+    image_generated = generate_article_image(tweets[0])
+    
+    if image_generated:
+        # Create first tweet with media
+        media = tweepy_api.media_upload("article_image.jpeg")
+        first_tweet = tweepy_client.create_tweet(
+            text=tweets[0],
+            media_ids=[media.media_id]
+        )
+    else:
+        # Fallback to text-only tweet if image generation fails
+        first_tweet = tweepy_client.create_tweet(text=tweets[0])
+    
     reply_to_id = first_tweet
 
     for tweet in tweets[1:]:
-        reply_to_id = tweepy_client.create_tweet(text=tweet, in_reply_to_tweet_id=first_tweet.data['id'])
-
+        reply_to_id = tweepy_client.create_tweet(
+            text=tweet, 
+            in_reply_to_tweet_id=first_tweet.data['id']
+        )
 
 # Twitter API credentials from .env file
 API_KEY = os.getenv("API_KEY")
@@ -170,12 +201,23 @@ ACCESS_TOKEN = os.getenv("CLIENT_ID")
 ACCESS_TOKEN_SECRET = os.getenv("CLIENT_SECRET")
 
 if last_article_tweeted != url:
+    # Initialize both Tweepy client and API
     tweepy_client = tweepy.Client(
         consumer_key=API_KEY,
         consumer_secret=API_SECRET_KEY,
         access_token=ACCESS_TOKEN,
         access_token_secret=ACCESS_TOKEN_SECRET
     )
+    
+    # Initialize Tweepy API v1.1 for media upload
+    auth = tweepy.OAuth1UserHandler(
+        API_KEY,
+        API_SECRET_KEY,
+        ACCESS_TOKEN,
+        ACCESS_TOKEN_SECRET
+    )
+    tweepy_api = tweepy.API(auth)
+    
     # create the tweet
     try:
         create_thread(tweets=tweets)
@@ -183,6 +225,6 @@ if last_article_tweeted != url:
         write_to_file("last_article_tweeted.txt", url)
     except tweepy.TweepyException as e:
         print(f"Error: {e}")
-        print(f"Error type: {type(e)}") 
+        print(f"Error type: {type(e)}")
 else:
     print("No new articles")
